@@ -186,4 +186,6 @@ Para consultas sobre la práctica calificada, contactar al equipo docente del cu
 
 ---
 
-**Nota Importante**: El dataset `data/raw/data_sample.parquet` es el único archivo de datos proporcionado. Los grupos deben generar sus propios datasets agregados a partir de este archivo base.
+**Nota Importante**: El dataset `data/raw/data_sample.parquet` es el único archivo de datos proporcionado. Los grupos deben generar sus propios datasets agregados a partir de este archivo base. El dataset fue generado con la query `ga_transactions_query.sql`. Como ejemplo de data, pueden ver `sample.json`. Aunque no es necesario, si quieren más detalle, la data viene de [aquí](https://console.cloud.google.com/marketplace/product/obfuscated-ga360-data/obfuscated-ga360-data). Para poder entrar deberán tener una cuenta GCP. Si quisieran un diccionario de datos, lo pueden encontrar [aquí](https://support.google.com/analytics/answer/3437719?hl=en)
+
+Todo lo que tiene que ver con los flujos precommit, requirements o config serán manejados por el profesor solamente. 
