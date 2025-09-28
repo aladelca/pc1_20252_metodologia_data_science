@@ -36,6 +36,11 @@ class TSConfig:
 
     freq: str = "D"
     fill_missing: str = "zero"  # 'zero' | 'ffill' | 'none'
+    #Aviso Posible fuga de información
+    check_leakage: bool = True
+    leakage_eq_threshold: float = 0.90  # umbral para avisar (puedes cambiarlo)
+
+
 
 # ======================
 # Utils
@@ -75,7 +80,7 @@ def create_sequences(features: np.ndarray, target: np.ndarray, seq_len: int) -> 
         y.append(target[i])
     return np.array(X), np.array(y)
 
-def verificar_no_data_leakage(df: pd.DataFrame, target_col: str) -> None:
+def verificar_no_data_leakage(df: pd.DataFrame, target_col: str, threshold: float = 0.90) -> None:
     if target_col not in df.columns:
         return
     tgt = df[target_col]
@@ -83,8 +88,9 @@ def verificar_no_data_leakage(df: pd.DataFrame, target_col: str) -> None:
         if c == target_col:
             continue
         eq_rate = (df[c] == tgt).mean()
-        if np.isfinite(eq_rate) and eq_rate > 0.9:
+        if np.isfinite(eq_rate) and eq_rate >= threshold:
             print(f"[warning] Posible fuga de información en '{c}' (={eq_rate:.2%} iguales a target). Revísalo.")
+
 
 # ======================
 # Clase principal
@@ -211,8 +217,10 @@ class TimeSeriesPreprocessor:
         target_series = series if isinstance(series, pd.Series) else series[target_col]
         feats = self._crear_features_completas(target_series)
         feats['target_diff'] = feats['target'].diff()
-        verificar_no_data_leakage(feats, 'target')
+        if self.config.check_leakage:
+            verificar_no_data_leakage(feats, 'target', threshold=self.config.leakage_eq_threshold)
         return feats
+
 
     # --------- Preparaciones por tipo de modelo ---------
     def prepare_arima_data(self, series: Union[pd.Series, pd.DataFrame], start_date: str = '2000-01-01') -> pd.Series:
