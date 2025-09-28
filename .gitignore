@@ -205,3 +205,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Ignorar data agregada
+data/aggregated/
+
+# Ignorar la versión anclada de pyenv
+.python-version
