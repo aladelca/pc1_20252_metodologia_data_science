@@ -1,4 +1,3 @@
-
 import os
 import sys
 from dataclasses import dataclass
@@ -16,18 +15,14 @@ from statsmodels.tsa.stattools import adfuller
 
 @dataclass
 class TSConfig:
-    # columnas del dataset GA (puedes fijarlas si conoces los nombres exactos)
-    date_col: Optional[str] = None              # e.g. 'parsed_date' (preferido) o 'transaction_date' (YYYYMMDD)
-    brand_col: Optional[str] = None             # e.g. 'product_brand'
-    # métrica objetivo (ej.: 'transactionRevenue', 'transactions', etc.)
-    target_metric: Optional[str] = None
+    date_col: Optional[str] = None              # 'parsed_date' o 'transaction_date'
+    brand_col: Optional[str] = None             # 'product_brand'
+    target_metric: Optional[str] = None         # p.ej. 'events', 'transactions', etc.
 
-    # normalización de marca
-    brand_placeholders: Tuple[str, ...] = ("(not set)", "", " ", "na", "n/a", "none", "null", "NULL", None)
+    brand_placeholders: Tuple[str, ...] = ("", " ", "na", "n/a", "none", "null", "NULL", None)
     brand_unknown_token: str = "Unknown"
-    drop_unknown_brands: bool = False           # si True, se eliminan filas con brand desconocida
+    drop_unknown_brands: bool = False
 
-    # feature engineering (igual que tu ejemplo)
     lags: Tuple[int, ...] = (1, 2, 3, 5, 10, 20)
     ventanas_ma: Tuple[int, ...] = (5, 10, 20, 50, 100)
     ventanas_std: Tuple[int, ...] = (5, 10, 20, 50)
@@ -39,12 +34,11 @@ class TSConfig:
     incluir_tecnicas: bool = True
     incluir_momentum: bool = True
 
-    # agregación temporal
-    freq: str = "D"            # diario
-    fill_missing: str = "zero" # 'zero' | 'ffill' | 'none'
+    freq: str = "D"
+    fill_missing: str = "zero"  # 'zero' | 'ffill' | 'none'
 
 # ======================
-# Utils (fallbacks auto-contenidos)
+# Utils
 # ======================
 def adf_test(series: pd.Series, title: str = "") -> bool:
     s = pd.to_numeric(series, errors='coerce').dropna()
@@ -69,7 +63,7 @@ def crear_variable_exogena_segura(series: pd.Series, periods: List[Tuple[pd.Time
     idx = series.index
     out = pd.Series(0, index=idx, dtype=int)
     for (start, end) in periods:
-        mask = (idx >= pd.to_datetime(start)) & (idx <= pd.to_datetime(end))
+        mask = (idx >= pd.to_datetime(start, utc=True)) & (idx <= pd.to_datetime(end, utc=True))
         out.loc[mask] = 1
     out.name = name
     return out
@@ -96,7 +90,7 @@ def verificar_no_data_leakage(df: pd.DataFrame, target_col: str) -> None:
 # Clase principal
 # ======================
 class TimeSeriesPreprocessor:
-    """Comprehensive time series preprocessing class for multiple models (adaptado a GA Día/Marca)."""
+    """Preprocesamiento multi-modelo adaptado a GA Día/Marca."""
     def __init__(self, config: TSConfig = None):
         self.config = config or TSConfig()
         self.feature_scaler = MinMaxScaler()
@@ -106,60 +100,60 @@ class TimeSeriesPreprocessor:
     # --------- Carga y esquema GA ---------
     def load_data(self, file_path: str) -> pd.DataFrame:
         data = pd.read_parquet(file_path)
+
         # Detectar/forzar fecha
         date_col = self.config.date_col or self._detect_date_col(data)
         if date_col not in data.columns:
             raise ValueError(f"No se encontró columna de fecha (busqué '{date_col}'). Define config.date_col.")
 
-        # Parseo robusto para casos comunes
-        if date_col == 'transaction_date' and not np.issubdtype(data[date_col].dtype, np.datetime64):
-            # yyyymmdd -> datetime
-            ser = data[date_col].astype(str).str.zfill(8)
-            data[date_col] = pd.to_datetime(ser, format="%Y%m%d", errors='coerce', utc=True)
+        # Parseo robusto (tz-aware safe)
+        is_dt = pd.api.types.is_datetime64_any_dtype(data[date_col])
+        if not is_dt:
+            if date_col == 'transaction_date':
+                ser = data[date_col].astype(str).str.zfill(8)
+                data[date_col] = pd.to_datetime(ser, format="%Y%m%d", errors='coerce', utc=True)
+            else:
+                data[date_col] = pd.to_datetime(data[date_col], errors='coerce', utc=True)
         else:
             data[date_col] = pd.to_datetime(data[date_col], errors='coerce', utc=True)
 
-        data = data.dropna(subset=[date_col])
-        data = data.sort_values(date_col)
+        data = data.dropna(subset=[date_col]).sort_values(date_col)
         data = data.set_index(date_col)
-        data.index.name = 'Date'
+        data.index.name = 'Date'  # tz-aware, UTC
 
         # Normalizar marca si existe
         brand_col = self.config.brand_col or self._detect_brand_col(data)
         if brand_col in data.columns:
             data[brand_col] = data[brand_col].astype("object").fillna(self.config.brand_unknown_token)
-            data[brand_col] = data[brand_col].apply(lambda x: self.config.brand_unknown_token if (isinstance(x, str) and x.strip() in self.config.brand_placeholders) else x)
+            data[brand_col] = data[brand_col].apply(
+                lambda x: self.config.brand_unknown_token
+                if (isinstance(x, str) and x.strip() in self.config.brand_placeholders)
+                else x
+            )
             if self.config.drop_unknown_brands:
                 data = data[data[brand_col] != self.config.brand_unknown_token]
 
         return data
 
     def _detect_date_col(self, df: pd.DataFrame) -> str:
-        # preferir 'parsed_date' si existe
         if 'parsed_date' in df.columns:
             return 'parsed_date'
-        # luego 'transaction_date' (YYYYMMDD)
         if 'transaction_date' in df.columns:
             return 'transaction_date'
-        # genérico
         candidates = [c for c in df.columns if any(k in c.lower() for k in ['date','time','timestamp','datetime'])]
         if candidates:
             return candidates[0]
-        # fallback si el index ya es datetime
         if isinstance(df.index, pd.DatetimeIndex):
             return df.index.name or 'Date'
         return 'Date'
 
     def _detect_brand_col(self, df: pd.DataFrame) -> str:
-        # preferir product_brand
         for name in ['product_brand','productBrand','brand','Brand','product_brand_name']:
             if name in df.columns:
                 return name
-        # búsqueda por substring
         for c in df.columns:
             if 'brand' in c.lower():
                 return c
-        # si no hay, devolvemos un nombre imposible para forzar chequeo arriba
         return '__brand_not_found__'
 
     def select_brand_series(self, df: pd.DataFrame, brand: Optional[str], metric: Optional[str]) -> pd.Series:
@@ -170,12 +164,10 @@ class TimeSeriesPreprocessor:
         if metric_col is None or metric_col not in df.columns:
             raise ValueError("Define 'target_metric' en config o pásala al método.")
 
-        if brand is not None:
-            sub = df[df[brand_col] == brand]
-        else:
-            sub = df.copy()
-
+        sub = df[df[brand_col] == brand] if brand is not None else df.copy()
         y = pd.to_numeric(sub[metric_col], errors='coerce')
+
+        # Resample diario
         daily = y.resample(self.config.freq).sum(min_count=1)
         if self.config.fill_missing == 'zero':
             daily = daily.fillna(0)
@@ -229,7 +221,12 @@ class TimeSeriesPreprocessor:
             if len(num_cols) == 0:
                 raise ValueError("No hay columnas numéricas en el DataFrame para ARIMA.")
             series = series[num_cols[0]]
-        filtered = series[series.index >= pd.to_datetime(start_date)]
+
+        # Asegurar que la comparación sea tz-aware
+        start_dt = pd.to_datetime(start_date, utc=True)
+        # Filtrado por rango
+        filtered = series[series.index >= start_dt]
+
         is_stat = self.check_stationarity(filtered, 'Original Series')
         if not is_stat:
             diff = filtered.diff().dropna()
@@ -243,10 +240,19 @@ class TimeSeriesPreprocessor:
             if len(num_cols) == 0:
                 raise ValueError("No hay columnas numéricas en el DataFrame para Prophet.")
             series = series[num_cols[0]]
+
+        # Prophet: suele preferir índice tz-naive
+        y = series.copy()
+        if getattr(y.index, "tz", None) is not None:
+            y.index = y.index.tz_convert(None)
+
         exog_vars = {}
         if events_periods:
-            exog_vars['event_1'] = crear_variable_exogena_segura(series, events_periods, 'event_1')
-        prophet_df = preparar_datos_prophet(series, exog_vars)
+            # construir con el índice original del usuario (naive)
+            exog_vars['event_1'] = crear_variable_exogena_segura(
+                y, [(pd.to_datetime(a), pd.to_datetime(b)) for (a, b) in events_periods], 'event_1'
+            )
+        prophet_df = preparar_datos_prophet(y, exog_vars)
         return prophet_df, list(exog_vars.keys())
 
     def prepare_ml_data(self, series: Union[pd.Series, pd.DataFrame], 
@@ -261,11 +267,19 @@ class TimeSeriesPreprocessor:
             target_series = series[target_col]
         else:
             target_series = series
+
+        # Fechas tz-aware para cortes
+        t_start = pd.to_datetime(train_start, utc=True)
+        t_end   = pd.to_datetime(train_end,   utc=True)
+        te_start= pd.to_datetime(test_start,  utc=True)
+
         feats = self.create_features(target_series, target_col=None)
-        train_data = feats.loc[pd.to_datetime(train_start):pd.to_datetime(train_end)]
-        test_data = feats.loc[pd.to_datetime(test_start):]
+        train_data = feats.loc[t_start:t_end]
+        test_data  = feats.loc[te_start:]
+
         train_data = train_data.dropna()
         test_data = test_data.dropna()
+
         feature_cols = [c for c in train_data.columns if c not in ['target', 'target_diff']]
         X_train = train_data[feature_cols]
         y_train = train_data['target_diff']
