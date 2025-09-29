@@ -211,3 +211,4 @@ data/aggregated/
 
 # Ignorar la versión anclada de pyenv
 .python-version
+.idea/
