@@ -1,4 +1,5 @@
-"""Agregación y features - Predicción de Unidades"""
+"""AGREGACIÓN - Día/Producto/Transacción
+SOLO funciones de agrupamiento/aggregation para crear métricas históricas"""
 
 import pandas as pd
 import numpy as np
@@ -6,121 +7,99 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def create_product_lag_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Crear variables LAG a nivel de PRODUCTO para predecir transacciones futuras"""
-    df_lagged = df.copy()
+def create_daily_product_aggregation(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    AGREGACIÓN: Métricas diarias por producto para construir features históricas
+    Nivel: Día + Producto (para luego hacer merge con transacciones individuales)
     
-    # Ordenar por producto y fecha para series temporales
-    df_lagged = df_lagged.sort_values(['product_sku', 'parsed_date'])
+    Returns:
+        DataFrame con métricas agregadas por día y producto
+    """
+    logger.info("Calculando agregaciones diarias por producto...")
     
-    product_features = []
+    # Agrupar por día y producto para tener histórico de comportamiento
+    daily_agg = df.groupby(['product_sku', 'parsed_date']).agg({
+        'units_sold': ['sum', 'count', 'mean', 'std'],
+        'transaction_id': 'nunique',
+        'visitor_id': 'nunique',
+        'product_price_usd': 'mean'
+    }).reset_index()
     
-    for product_sku in df_lagged['product_sku'].unique():
-        product_data = df_lagged[df_lagged['product_sku'] == product_sku].copy()
-        
-        # 1. LAGS TEMPORALES - Solo datos PASADOS del mismo producto
-        for lag in [1, 3, 7, 14]:  # Días anteriores
-            product_data[f'product_units_lag_{lag}'] = product_data['units_sold'].shift(lag)
-        
-        # 2. PROMEDIOS MÓVILES - Calculados con datos históricos
-        product_data['product_units_rolling_mean_7'] = (
-            product_data['units_sold'].shift(1).rolling(window=7, min_periods=1).mean()
-        )
-        product_data['product_units_rolling_mean_30'] = (
-            product_data['units_sold'].shift(1).rolling(window=30, min_periods=1).mean()
-        )
-        
-        # 3. TENDENCIAS HISTÓRICAS
-        product_data['product_units_trend_7'] = (
-            product_data['units_sold'].shift(1).rolling(window=7).mean() -
-            product_data['units_sold'].shift(1).rolling(window=7).mean().shift(7)
-        )
-        
-        # 4. FRECUENCIA DE TRANSACCIONES HISTÓRICAS
-        product_data['product_transaction_freq_7'] = (
-            product_data['is_completed_transaction'].shift(1).rolling(window=7).sum()
-        )
-        
-        # 5. DÍAS DESDE ÚLTIMA TRANSACCIÓN
-        product_data['days_since_last_transaction'] = (
-            product_data['parsed_date'] - product_data['parsed_date'].shift(1)
-        ).dt.days
-        
-        product_features.append(product_data)
-    
-    df_with_lags = pd.concat(product_features, ignore_index=True)
-    
-    # Contar features creados
-    lag_features = [col for col in df_with_lags.columns if 'lag' in col or 'rolling' in col or 'trend' in col]
-    logger.info(f"Features temporales creados: {len(lag_features)}")
-    
-    return df_with_lags
-
-def create_time_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Crear características temporales generales"""
-    df_featured = df.copy()
-    
-    # Características de fecha
-    df_featured['year'] = df_featured['parsed_date'].dt.year
-    df_featured['month'] = df_featured['parsed_date'].dt.month
-    df_featured['day'] = df_featured['parsed_date'].dt.day
-    df_featured['dayofweek'] = df_featured['parsed_date'].dt.dayofweek
-    df_featured['weekofyear'] = df_featured['parsed_date'].dt.isocalendar().week
-    df_featured['is_weekend'] = (df_featured['dayofweek'] >= 5).astype(int)
-    df_featured['is_month_start'] = df_featured['parsed_date'].dt.is_month_start.astype(int)
-    df_featured['is_month_end'] = df_featured['parsed_date'].dt.is_month_end.astype(int)
-    
-    # Features cíclicos
-    df_featured['month_sin'] = np.sin(2 * np.pi * df_featured['month'] / 12)
-    df_featured['month_cos'] = np.cos(2 * np.pi * df_featured['month'] / 12)
-    df_featured['dayofweek_sin'] = np.sin(2 * np.pi * df_featured['dayofweek'] / 7)
-    df_featured['dayofweek_cos'] = np.cos(2 * np.pi * df_featured['dayofweek'] / 7)
-    
-    logger.info(f"Features temporales creados: {len(['year', 'month', 'dayofweek', 'is_weekend'])}")
-    
-    return df_featured
-
-def prepare_modeling_data(df: pd.DataFrame) -> pd.DataFrame:
-    """Preparar datos finales para modelado"""
-    df_model = df.copy()
-    
-    # 1. Crear features temporales
-    df_model = create_time_features(df_model)
-    
-    # 2. Filtrar solo transacciones completadas para entrenamiento
-    df_model = df_model[df_model['is_completed_transaction']]
-    
-    # 3. Seleccionar columnas para modelado
-    feature_columns = [
-        # Target
-        'units_sold',
-        
-        # Features temporales
-        'year', 'month', 'day', 'dayofweek', 'is_weekend', 'is_month_start', 'is_month_end',
-        'month_sin', 'month_cos', 'dayofweek_sin', 'dayofweek_cos',
-        
-        # Features de producto (lags históricos)
-        'product_units_lag_1', 'product_units_lag_3', 'product_units_lag_7', 'product_units_lag_14',
-        'product_units_rolling_mean_7', 'product_units_rolling_mean_30',
-        'product_units_trend_7', 'product_transaction_freq_7', 'days_since_last_transaction'
+    # Limpiar nombres de columnas
+    daily_agg.columns = [
+        'product_sku', 'parsed_date', 
+        'daily_units_total', 'daily_transaction_count', 'daily_avg_units', 'daily_std_units',
+        'daily_unique_transactions', 'daily_unique_visitors', 'daily_avg_price'
     ]
     
-    # Solo mantener columnas que existen
-    available_features = [col for col in feature_columns if col in df_model.columns]
+    # Llenar NaNs
+    daily_agg['daily_std_units'] = daily_agg['daily_std_units'].fillna(0)
     
-    # Columnas de identificación (para tracking)
-    id_columns = ['transaction_id', 'product_sku', 'parsed_date', 'product_name']
+    logger.info(f"Agregación diaria-producto: {len(daily_agg)} registros")
+    return daily_agg
+
+def create_product_global_metrics(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    AGREGACIÓN: Métricas globales por producto (todo el histórico)
+    Nivel: Producto
     
-    # DataFrame final
-    final_columns = id_columns + available_features
-    df_final = df_model[final_columns].copy()
+    Returns:
+        DataFrame con métricas globales por producto para enriquecer transacciones
+    """
+    logger.info("Calculando métricas globales por producto...")
     
-    # Eliminar filas con valores nulos en features
-    initial_rows = len(df_final)
-    df_final = df_final.dropna(subset=available_features)
+    product_global = df.groupby('product_sku').agg({
+        'units_sold': ['sum', 'mean', 'std', 'count'],
+        'product_price_usd': ['mean', 'std', 'min', 'max'],
+        'parsed_date': ['min', 'max', 'nunique'],
+        'transaction_id': 'nunique',
+        'visitor_id': 'nunique'
+    }).reset_index()
     
-    logger.info(f"Datos para modelado: {len(df_final)} filas ({initial_rows - len(df_final)} eliminadas por nulos)")
-    logger.info(f"Target: units_sold")
-    logger.info(f"Features: {len(available_features)} variables")
+    # Limpiar nombres
+    product_global.columns = [
+        'product_sku', 'global_units_total', 'global_avg_units', 'global_std_units', 'global_transaction_count',
+        'global_avg_price', 'global_std_price', 'global_min_price', 'global_max_price',
+        'first_transaction_date', 'last_transaction_date', 'active_days_count',
+        'global_unique_transactions', 'global_unique_visitors'
+    ]
     
-    return df_final
+    # Calcular métricas derivadas
+    product_global['global_sales_consistency'] = (
+        product_global['global_transaction_count'] / product_global['active_days_count']
+    ).replace([np.inf, -np.inf], 0).fillna(0)
+    
+    product_global['product_lifetime_days'] = (
+        product_global['last_transaction_date'] - product_global['first_transaction_date']
+    ).dt.days + 1
+    
+    logger.info(f"Métricas globales para {len(product_global)} productos")
+    return product_global
+
+def create_weekly_trends(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    AGREGACIÓN: Tendencias semanales por producto
+    Nivel: Semana + Producto
+    
+    Returns:
+        DataFrame con tendencias semanales para features de tendencia
+    """
+    logger.info("Calculando tendencias semanales por producto...")
+    
+    df_weekly = df.copy()
+    df_weekly['year_week'] = df_weekly['parsed_date'].dt.strftime('%Y-%U')
+    
+    weekly_agg = df_weekly.groupby(['product_sku', 'year_week']).agg({
+        'units_sold': ['sum', 'mean', 'count'],
+        'transaction_id': 'nunique',
+        'product_price_usd': 'mean'
+    }).reset_index()
+    
+    weekly_agg.columns = [
+        'product_sku', 'year_week',
+        'weekly_units_total', 'weekly_avg_units', 'weekly_transaction_count',
+        'weekly_unique_transactions', 'weekly_avg_price'
+    ]
+    
+    logger.info(f"Tendencias semanales: {len(weekly_agg)} registros")
+    return weekly_agg
