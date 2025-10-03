@@ -1,7 +1,9 @@
 #GROUP4
 # tests/test_preprocessing.py GROUP04
+import os
 import sys
 from pathlib import Path
+import uuid
 import numpy as np
 import pandas as pd
 import pytest
@@ -24,17 +26,22 @@ import preprocess.cleaning as cleaning_mod
 # Fixtures de utilería
 # ---------------------
 @pytest.fixture
-def tmp_paths(tmp_path):
-    """Rutas temporales (no tocan tus datos reales)."""
-    raw = tmp_path / "data" / "raw" / "data_sample.parquet"
-    cleaned = tmp_path / "data" / "raw" / "data_sample_cleaned_group04.parquet"
-    aggregated = tmp_path / "data" / "raw" / "brand_daily_group04.parquet"
-    raw.parent.mkdir(parents=True, exist_ok=True)
-    return {
-        "raw": raw,
-        "cleaned": cleaned,
-        "aggregated": aggregated,
-    }
+def tmp_paths(tmp_path, request):
+    """
+    Rutas temporales por test (nombres únicos, sin hardcodear).
+    Evita colisiones y acoplamiento a nombres fijos.
+    """
+    base = tmp_path / "data" / "raw"
+    base.mkdir(parents=True, exist_ok=True)
+
+    uid = uuid.uuid4().hex[:8]
+    testname = request.node.name.replace(os.sep, "_")
+
+    raw        = base / f"{testname}_raw_{uid}.parquet"
+    cleaned    = base / f"{testname}_cleaned_{uid}.parquet"
+    aggregated = base / f"{testname}_aggregated_{uid}.parquet"
+
+    return {"base": base, "raw": raw, "cleaned": cleaned, "aggregated": aggregated}
 
 
 @pytest.fixture
@@ -109,13 +116,13 @@ def test_end_to_end_agg_and_preprocess(tmp_paths, synthetic_raw_df):
     # hay 10 días → al menos 10 grupos para cada marca que se presente
     assert agg_mem["transaction_date"].nunique() == 90
 
-    # b) escritura a disco con generate_day_brand_grouped_data_files
-    res = aggregation_mod.generate_day_brand_grouped_data_files(
+    # b) escritura a disco devolviendo también el DF (la función siempre retorna el DataFrame)
+    agg_df = aggregation_mod.generate_day_brand_grouped_data_files(
         in_path=str(tmp_paths["cleaned"]),
         out_path=str(tmp_paths["aggregated"]),
-        metric_col=None,  # conteo
+        metric_col=None,     # conteo
     )
-    assert res == "success"
+    assert isinstance(agg_df, pd.DataFrame)
     assert Path(tmp_paths["aggregated"]).exists()
 
     agg_disk = pd.read_parquet(tmp_paths["aggregated"])
