@@ -1,6 +1,5 @@
 import pandas as pd
 
-
 def aggregate_by_day_and_category(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calcula el total de 'product_quantity' por 'transaction_date' y
