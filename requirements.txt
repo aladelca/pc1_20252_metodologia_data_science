@@ -1,4 +1,4 @@
-# Validation and code quality tools
+# Validation and code quality tools   Usar de pythom 3.12
 pre-commit==3.3.3
 black==23.3.0
 isort==5.12.0
