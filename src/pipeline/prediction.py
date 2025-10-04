@@ -2,7 +2,7 @@ import joblib
 from src.pipeline.preprocess import load_and_preprocess, split_train_test
 
 
-def main():
+def run_prediction():
     # Cargar datos
     df_no_quant, df_quant = (
         load_and_preprocess(
@@ -20,6 +20,11 @@ def main():
 
     # Predecir
     preds = gb.predict(X_test)
+
+    return X_test, y_test, preds
+
+def main():
+    X_test, y_test, preds = run_prediction()
 
     print("✅ Predicciones generadas para el 1% final del dataset")
     for date, real, pred in zip(X_test.index[:49], y_test[:49], preds[:49]):
