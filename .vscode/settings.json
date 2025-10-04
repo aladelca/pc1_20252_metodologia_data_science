@@ -1,0 +1,12 @@
+{
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "python-envs.pythonProjects": [],
+      "python.linting.enabled": true,
+    "python.linting.flake8Enabled": true,
+    "python.linting.pylintEnabled": false,
+    "python.defaultInterpreterPath": "F:\\PROYECTOS\\GIT REPOSITORIO\\DATA_SCIENCE\\practica\\pc1_20252_metodologia_data_science\\.venv\\Scripts\\python.exe",
+    "python.linting.flake8Path": "F:\\PROYECTOS\\GIT REPOSITORIO\\DATA_SCIENCE\\practica\\pc1_20252_metodologia_data_science\\.venv\\Scripts\\flake8.exe",
+    "python.linting.flake8Args": ["--config", ".flake8"],
+    "editor.rulers": [120]
+    
+}
