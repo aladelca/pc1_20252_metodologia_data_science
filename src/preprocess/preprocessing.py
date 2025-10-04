@@ -58,8 +58,7 @@ def fill_missing_dates_with_zero(df: pd.DataFrame) -> pd.DataFrame:
         df_cat = pd.DataFrame({
             'transaction_date': ts.index,
             'product_category': category,
-            'product_quantity': ts.astype(float).values  # mantener
-                                                         # tipo consistente
+            'product_quantity': ts.astype(float).values
         })
         filled_frames.append(df_cat)
 
