@@ -24,11 +24,11 @@ print(' Archivo esperado:', PARQUET_PATH)
 * Carga y exploración inicial de datos
 python
 * Leer Parquet
-   df = pd.read_parquet('../data/raw/data_daily_group04.parquet')
+   data = pd.read_parquet('../data/raw/data_daily_group04.parquet')
 
 *  Mostrar resultados
-   display(df.head())  # primeros 5 registros
-   print(f'Filas: {df.shape[0]}, Columnas: {df.shape[1]}')
+   display(data.head())  # primeros 5 registros
+   print(f'Filas: {data.shape[0]}, Columnas: {data.shape[1]}')
 
 ### Análisis de los datos mostrados:
 
