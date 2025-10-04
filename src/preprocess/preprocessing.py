@@ -5,9 +5,34 @@ from src.preprocess.cleaning import clean_for_day_and_category_aggregation
 
 
 def fill_missing_dates_with_zero(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Rellena fechas faltantes con ceros en la serie temporal de cada categoría.
+
+    La función asegura que para cada `product_category` se complete el rango
+    de fechas activo (desde la primera hasta la última fecha observada) con
+    frecuencia diaria. Si en un día no existen registros, se asigna un valor
+    de `0` en `product_quantity`. También se normalizan las fechas y se
+    garantiza que `product_quantity` sea de tipo numérico.
+
+    Parameters
+    df (pd.DataFrame): DataFrame de entrada con las columnas:
+    - `transaction_date` (datetime-like): fechas de transacciones.
+    - `product_category` (str o category): categoría del producto.
+    - `product_quantity` (numérico): cantidad vendida.
+
+    Returns
+    pd.DataFrame
+    DataFrame resultante con:
+    - Fechas continuas por categoría (sin huecos).
+    - Columna `product_quantity` rellenada con `0`
+    donde no había registros.
+    - Tipos consistentes (`datetime64` para fechas,
+    `float` para cantidades).
+    """
+
     # Normalizar a fecha (sin hora) y asegurar tipo numérico
     df['transaction_date'] = (
-        df['transaction_date'].dt.normalize() # type: ignore[attr-defined]
+        df['transaction_date'].dt.normalize()  # type: ignore[attr-defined]
       )
     df['product_quantity'] = pd.to_numeric(
         df['product_quantity'], errors='coerce'
@@ -66,7 +91,15 @@ def fill_missing_dates_with_zero(df: pd.DataFrame) -> pd.DataFrame:
 
 def preprocessing() -> str:
     """
-    Genera los archivos de datos agrupados por día y categoría.
+    Preprocesa los datos de ventas y genera archivos agregados
+    por día y categoría.
+
+    Parameters
+    None
+
+    Returns
+    str: Cadena de confirmación. Retorna `"success"`
+    si el proceso se ejecuta correctamente.
     """
     # Crear el directorio si no existe
     if not os.path.exists('data/aggregated'):

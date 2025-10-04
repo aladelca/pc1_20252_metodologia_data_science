@@ -6,6 +6,25 @@ from src.pipeline.preprocess import load_and_preprocess, split_train_test
 
 
 def evaluate(y_true, y_pred):
+    """Calcula métricas de evaluación para un
+    modelo de predicción de series temporales.
+
+    Se incluyen el Error Absoluto Medio (MAE),
+    la Raíz del Error Cuadrático Medio (RMSE)
+    y el Error Porcentual Absoluto Medio (MAPE).
+    En el cálculo de MAPE se agrega 1 al denominador
+    para evitar divisiones por cero.
+
+    Parameters
+    y_true (array-like o pd.Series): Valores reales observados.
+    y_pred (array-like o pd.Series): Valores predichos por el modelo.
+
+    Returns
+    dict Diccionario con las métricas calculadas:
+    - "MAE": float, error absoluto medio.
+    - "RMSE": float, raíz del error cuadrático medio.
+    - "MAPE": float, error porcentual absoluto medio (%).
+    """
     mae = mean_absolute_error(y_true, y_pred)
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     mape = np.mean(np.abs((y_true - y_pred) / (y_true + 1))) * 100
