@@ -2,6 +2,6 @@
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = "pandas"
+module = ["pandas","joblib","sklearn.*"]
 ignore_missing_imports = true
 disable_error_code = ["attr-defined"]

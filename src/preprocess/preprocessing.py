@@ -1,10 +1,17 @@
 import pandas as pd
+import os
+from src.preprocess.aggregation import aggregate_by_day_and_category
+from src.preprocess.cleaning import clean_for_day_and_category_aggregation
+
 
 def fill_missing_dates_with_zero(df: pd.DataFrame) -> pd.DataFrame:
     # Normalizar a fecha (sin hora) y asegurar tipo numérico
-    df['transaction_date'] = df['transaction_date'].dt.normalize()  # type: ignore[attr-defined]
-    df['product_quantity'] = pd.to_numeric(df['product_quantity'],
-                                           errors='coerce').fillna(0)
+    df['transaction_date'] = (
+        df['transaction_date'].dt.normalize() # type: ignore[attr-defined]
+      )
+    df['product_quantity'] = pd.to_numeric(
+        df['product_quantity'], errors='coerce'
+    ).fillna(0)
 
     # Relleno por categoría en el rango activo
     filled_frames = []
@@ -35,8 +42,10 @@ def fill_missing_dates_with_zero(df: pd.DataFrame) -> pd.DataFrame:
         df = pd.concat(filled_frames, ignore_index=True)
     else:
         # Si no hubo frames (caso borde), garantizar esquema vacío correcto
-        df = df[['transaction_date', 'product_category',
-                 'product_quantity']].copy()
+        df = (
+            df[['transaction_date', 'product_category', 'product_quantity']]
+            .copy()
+            )
 
     # Tipos finales y orden
     df['transaction_date'] = pd.to_datetime(df['transaction_date'])
@@ -47,9 +56,36 @@ def fill_missing_dates_with_zero(df: pd.DataFrame) -> pd.DataFrame:
     except Exception:
         pass
 
-    df['product_quantity'] = pd.to_numeric(df['product_quantity'],
-                                           errors='coerce').fillna(0)
+    df['product_quantity'] = pd.to_numeric(
+        df['product_quantity'], errors='coerce'
+        ).fillna(0)
     df = df.sort_values(['product_category', 'transaction_date'])
 
     return df
 
+
+def preprocessing() -> str:
+    """
+    Genera los archivos de datos agrupados por día y categoría.
+    """
+    # Crear el directorio si no existe
+    if not os.path.exists('data/aggregated'):
+        os.makedirs('data/aggregated')
+
+    # Leer el archivo Parquet
+    df = pd.read_parquet('data/raw/data_sample.parquet')
+    # Limpiar los datos
+    df = clean_for_day_and_category_aggregation(df)
+    # Agrupar y agregar los datos
+    grouped_data = aggregate_by_day_and_category(df)
+    # Llenar los dias que no se tengan ventas con 0, pero solo dentro
+    # del rango de fechas valido para cada categoria
+    grouped_data = fill_missing_dates_with_zero(grouped_data)
+    # Guardar el DataFrame agrupado en un nuevo archivo Parquet
+    grouped_data.to_parquet('data/aggregated/day_category.parquet')
+
+    return "success"
+
+
+if __name__ == "__main__":
+    stat_preproc = preprocessing()
