@@ -40,6 +40,7 @@ def preprocess_for_group2(input_path: str, output_path: str):
     df_aggregated.to_parquet(output_path, index=False)
     
     print("Preprocesamiento completado!")
+    return df_aggregated
 
 if __name__ == '__main__':
     # Esto permite ejecutar el script directamente
