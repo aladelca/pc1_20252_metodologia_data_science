@@ -1,0 +1,11 @@
+joblib==1.5.2
+scikit-learn==1.7.2
+numpy==2.3.3
+pandas==2.3.2
+pyarrow==21.0.0
+matplotlib==3.10.6
+mypy==1.3.0
+flake8==6.0.0
+ruff==0.13.3
+seaborn==0.13.2
+pytest==7.4.0
