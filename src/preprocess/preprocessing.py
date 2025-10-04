@@ -5,6 +5,7 @@ import numpy as np
 import logging
 from .cleaning import clean_data
 from .aggregation import create_daily_product_aggregation, create_product_global_metrics
+from sklearn.preprocessing import LabelEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ def create_time_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def prepare_modeling_data(df: pd.DataFrame) -> pd.DataFrame:
-    """Preparar datos finales para modelado"""
+    """Preparar datos finales para modelado INCLUYENDO features contextuales"""
     df_model = df.copy()
     
     # 1. Features temporales
@@ -97,10 +98,19 @@ def prepare_modeling_data(df: pd.DataFrame) -> pd.DataFrame:
         df_model = df_model[df_model['is_completed_transaction']]
     else:
         df_model = df_model[df_model['units_sold'] > 0]
-        
-    # 3. Selección de features
-    feature_columns = [
-        'units_sold',
+    
+    # 3. DEFINIR FEATURES CONTEXTUALES CRÍTICAS
+    contextual_features = [
+        'product_price_usd', 'product_brand', 'product_category',
+        'promo_id', 'traffic_source', 'device_category', 'country',
+        'channel_grouping', 'session_number', 'total_pageviews'
+    ]
+    
+    # Incluir solo las disponibles
+    available_contextual = [f for f in contextual_features if f in df_model.columns]
+    
+    # 4. Features base + temporales + contextuales
+    temporal_features = [
         'year', 'month', 'day', 'dayofweek', 'is_weekend',
         'is_month_start', 'is_month_end',
         'month_sin', 'month_cos', 'dayofweek_sin', 'dayofweek_cos',
@@ -109,19 +119,42 @@ def prepare_modeling_data(df: pd.DataFrame) -> pd.DataFrame:
         'product_units_trend_7', 'product_transaction_freq_7', 'days_since_last_transaction'
     ]
     
-    available_features = [col for col in feature_columns if col in df_model.columns]
+    available_temporal = [col for col in temporal_features if col in df_model.columns]
     
     # IDs para tracking
-    id_columns = ['product_sku', 'parsed_date', 'product_name']
+    id_columns = ['product_sku', 'parsed_date', 'product_name', 'units_sold']
     
-    final_columns = id_columns + available_features
+    # TODAS las features
+    final_columns = id_columns + available_temporal + available_contextual
+    
     df_final = df_model[final_columns].copy()
     
-    # Drop de nulos
+    # Drop de nulos (solo en features temporales, las contextuales pueden tener nulos)
     initial_rows = len(df_final)
-    df_final = df_final.dropna(subset=available_features)
+    df_final = df_final.dropna(subset=available_temporal)
     
-    logger.info(f"Dataset final: {len(df_final)} filas ({initial_rows - len(df_final)} eliminadas por nulos)")
-    logger.info(f"Features finales: {len(available_features)}")
+    logger.info(f"✅ Dataset FINAL: {len(df_final)} filas ({initial_rows - len(df_final)} eliminadas por nulos)")
+    logger.info(f"📊 Features totales: {len(final_columns) - 4}")  # Excluyendo IDs y target
+    logger.info(f"🎯 Features contextuales: {available_contextual}")
     
     return df_final
+
+# Después de prepare_modeling_data, necesitarás:
+
+def encode_categorical_features(df):
+    """Codificar features categóricas para el modelo"""
+    df_encoded = df.copy()
+    
+    categorical_cols = ['product_brand', 'product_category', 'traffic_source', 
+                       'device_category', 'country', 'channel_grouping']
+    
+    available_categorical = [col for col in categorical_cols if col in df_encoded.columns]
+    
+    for col in available_categorical:
+        le = LabelEncoder()
+        df_encoded[f'{col}_encoded'] = le.fit_transform(df_encoded[col].astype(str))
+    
+    # Remover las originales
+    df_encoded = df_encoded.drop(columns=available_categorical)
+    
+    return df_encoded

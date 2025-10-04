@@ -14,7 +14,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from preprocess.cleaning import clean_data
 from preprocess.aggregation import create_daily_product_aggregation, create_product_global_metrics
-from preprocess.preprocessing import create_product_lag_features, create_time_features, prepare_modeling_data
+from preprocess.preprocessing import create_product_lag_features, create_time_features, prepare_modeling_data, encode_categorical_features  # ← AGREGAR encode_categorical_features
 
 
 def load_data(filepath: str) -> pd.DataFrame:
@@ -76,7 +76,12 @@ def run_pipeline():
         df_with_lags = create_product_lag_features(df_with_agg)
         df_with_time = create_time_features(df_with_lags)
         df_final = prepare_modeling_data(df_with_time)
-        save_processed_data(df_final, os.path.join(processed_dir, "data_training.parquet"))
+        
+        # 4. ENCODING (NUEVO PASO)
+        logger.info("Paso 4: Encoding categóricas")
+        df_encoded = encode_categorical_features(df_final)
+        
+        save_processed_data(df_encoded, os.path.join(processed_dir, "data_training.parquet"))
 
         # Resumen final
         logger.info("=== PIPELINE FINALIZADO ===")
@@ -84,6 +89,10 @@ def run_pipeline():
         logger.info(" - data_cleaned.parquet")
         logger.info(" - data_processed.parquet")
         logger.info(" - data_training.parquet")
+        
+        # Resumen del dataset final
+        logger.info(f"📊 DATASET FINAL: {len(df_encoded)} filas, {len(df_encoded.columns)} columnas")
+        logger.info(f"🎯 Features disponibles para el modelo: {[col for col in df_encoded.columns if col not in ['product_sku', 'parsed_date', 'product_name', 'units_sold']]}")
 
     except Exception as e:
         logger.error(f"Error en el pipeline: {e}")
